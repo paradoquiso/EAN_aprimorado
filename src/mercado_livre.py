@@ -137,6 +137,47 @@ def obter_access_token():
         logger.warning(f"Usando token de teste para desenvolvimento após falha: {test_token[:10]}...")
         return test_token
 
+def calcular_preco_medio(results):
+    """
+    Calcula o preço médio com base nos resultados da API do Mercado Livre.
+    
+    Args:
+        results: Lista de produtos retornados pela API
+        
+    Returns:
+        float: Preço médio calculado ou None se não houver preços válidos
+    """
+    try:
+        if not results:
+            return None
+            
+        precos_encontrados = []
+        
+        for item in results:
+            preco_item = item.get('price')
+            if preco_item is not None:
+                try:
+                    # Tenta converter para float e adiciona à lista
+                    preco_float = float(preco_item)
+                    precos_encontrados.append(preco_float)
+                except (ValueError, TypeError):
+                    # Log ou ignora preços que não podem ser convertidos
+                    logger.warning(f"Preço inválido encontrado: {preco_item}")
+                    pass
+        
+        # Calcular preço médio se houver preços válidos
+        preco_medio_calculado = None
+        if precos_encontrados:
+            preco_medio_calculado = sum(precos_encontrados) / len(precos_encontrados)
+            logger.info(f"Preço médio calculado: {preco_medio_calculado} (baseado em {len(precos_encontrados)} produtos)")
+        else:
+            logger.warning("Nenhum preço válido encontrado para calcular média")
+            
+        return preco_medio_calculado
+    except Exception as e:
+        logger.error(f"Erro ao calcular preço médio: {str(e)}")
+        return None
+
 def buscar_produto_por_ean(ean):
     """
     Busca informações de um produto pelo código EAN utilizando múltiplas estratégias
@@ -203,6 +244,9 @@ def buscar_produto_por_ean(ean):
                         elif attr_id == "MODEL" or "MODELO" in attr_id:
                             modelo = attr_value
                     
+                    # Calcular preço médio
+                    preco_medio = calcular_preco_medio(results)
+                    
                     logger.info(f"Produto encontrado via products/search: {nome}")
                     
                     return {
@@ -212,7 +256,8 @@ def buscar_produto_por_ean(ean):
                             "cor": cor,
                             "voltagem": voltagem,
                             "modelo": modelo,
-                            "ean": ean
+                            "ean": ean,
+                            "preco_medio": preco_medio
                         },
                         "source": "api_products_search"
                     }
@@ -342,43 +387,29 @@ def buscar_produto_por_ean(ean):
                             ]
                             
                             for pattern in modelo_patterns:
-                                matches = re.findall(pattern, nome_base)
+                                matches = re.findall(pattern, nome_lower)
                                 if matches:
                                     modelo = matches[0].upper()
                                     break
                         
-                        # Construir uma descrição completa do produto
+                        # Construir nome completo com informações adicionais
                         nome_completo = nome_base
                         
-                        # Se o nome não contém todas as informações importantes, adicionar
-                        info_adicional = []
+                        # Adicionar marca se não estiver no nome
+                        if marca and marca.lower() not in nome_lower:
+                            nome_completo = f"{marca} {nome_completo}"
                         
-                        if modelo and modelo.upper() not in nome_completo.upper():
-                            info_adicional.append(f"modelo {modelo}")
+                        # Adicionar capacidade/potência se relevante e não estiver no nome
+                        if capacidade and capacidade.lower() not in nome_lower:
+                            nome_completo = f"{nome_completo} {capacidade}"
                         
-                        if potencia and potencia not in nome_completo:
-                            info_adicional.append(potencia)
+                        if potencia and potencia.lower() not in nome_lower:
+                            nome_completo = f"{nome_completo} {potencia}"
                         
-                        if capacidade and capacidade not in nome_completo:
-                            info_adicional.append(capacidade)
+                        # Calcular preço médio
+                        preco_medio = calcular_preco_medio(results)
                         
-                        if cor and cor.lower() not in nome_completo.lower():
-                            info_adicional.append(f"cor {cor}")
-                        
-                        if voltagem and voltagem not in nome_completo:
-                            info_adicional.append(voltagem)
-                        
-                        if marca and marca.lower() not in nome_completo.lower():
-                            info_adicional.append(marca)
-                        
-                        # Adicionar informações complementares à descrição
-                        if info_adicional:
-                            complemento = " ".join(info_adicional)
-                            if not nome_completo.endswith(" "):
-                                nome_completo += " "
-                            nome_completo += complemento
-                        
-                        logger.info(f"Produto encontrado com descrição completa: {nome_completo}")
+                        logger.info(f"Produto encontrado via sites/MLB/search: {nome_completo}")
                         
                         return {
                             "success": True,
@@ -388,13 +419,13 @@ def buscar_produto_por_ean(ean):
                                 "voltagem": voltagem,
                                 "modelo": modelo,
                                 "ean": ean,
-                                "url": permalink
+                                "preco_medio": preco_medio
                             },
                             "source": "api_sites_search"
                         }
-            elif response.status_code == 401:
-                logger.error(f"Erro de autenticação na API: {response.status_code} - {response.text}")
-                # Token inválido, tentar renovar na próxima chamada
+                elif response.status_code == 401:
+                    logger.error(f"Erro de autenticação na API: {response.status_code} - {response.text}")
+                    # Token inválido, tentar renovar na próxima chamada
         except Exception as e:
             logger.error(f"Erro na estratégia 2: {str(e)}")
         
@@ -459,6 +490,9 @@ def buscar_produto_por_ean(ean):
                                     voltagem = volt.upper()
                                     break
                         
+                        # Calcular preço médio
+                        preco_medio = calcular_preco_medio(results)
+                        
                         logger.info(f"Produto encontrado via filtro: {nome}")
                         
                         return {
@@ -468,7 +502,8 @@ def buscar_produto_por_ean(ean):
                                 "cor": cor,
                                 "voltagem": voltagem,
                                 "modelo": modelo,
-                                "ean": ean
+                                "ean": ean,
+                                "preco_medio": preco_medio
                             },
                             "source": "api_filtros"
                         }
@@ -520,6 +555,9 @@ def buscar_produto_por_ean(ean):
                             elif attr_id == "MODEL" or "MODELO" in attr_name:
                                 modelo = attr_value
                         
+                        # Calcular preço médio
+                        preco_medio = calcular_preco_medio(results)
+                        
                         logger.info(f"Produto encontrado via categoria: {nome}")
                         
                         return {
@@ -529,7 +567,8 @@ def buscar_produto_por_ean(ean):
                                 "cor": cor,
                                 "voltagem": voltagem,
                                 "modelo": modelo,
-                                "ean": ean
+                                "ean": ean,
+                                "preco_medio": preco_medio
                             },
                             "source": "api_categorias"
                         }
@@ -560,25 +599,29 @@ def fallback_busca_produto(ean):
             "nome": "Cabo HDMI 2.0 4K Ultra HD 3D 19 Pinos 2 Metros Preto",
             "cor": "Preto",
             "voltagem": "",
-            "modelo": "HDMI 2.0"
+            "modelo": "HDMI 2.0",
+            "preco_medio": 29.90
         },
         "1000425983": {
             "nome": "Liquidificador OLIQ610 1400w Full 3,2L cor preto oster 110V",
             "cor": "Preto",
             "voltagem": "110V",
-            "modelo": "OLIQ610"
+            "modelo": "OLIQ610",
+            "preco_medio": 149.99
         },
         "7898301059895": {
             "nome": "Oxímetro de Pulso Portátil OLED Graph G-Tech",
             "cor": "Azul",
             "voltagem": "",
-            "modelo": "OLED Graph"
+            "modelo": "OLED Graph",
+            "preco_medio": 89.90
         },
         "7908312809690": {
             "nome": "Fone de Ouvido Bluetooth JBL Tune 510BT Preto",
             "cor": "Preto",
             "voltagem": "",
-            "modelo": "Tune 510BT"
+            "modelo": "Tune 510BT",
+            "preco_medio": 199.90
         }
     }
     
@@ -592,83 +635,14 @@ def fallback_busca_produto(ean):
                 "cor": produto["cor"],
                 "voltagem": produto["voltagem"],
                 "modelo": produto["modelo"],
-                "ean": ean
+                "ean": ean,
+                "preco_medio": produto["preco_medio"]
             },
             "source": "fallback_especifico"
         }
     
     # Busca web simulada para qualquer EAN
-    # Em um ambiente de produção, isso seria substituído por uma busca real na API
-    # Aqui estamos simulando para fins de demonstração
-    
-    # Simulação de busca para produtos genéricos
-    if len(ean) >= 13:
-        # Simular um produto genérico baseado no EAN
-        categoria = ean[0:3]
-        subcategoria = ean[3:6]
-        
-        categorias = {
-            "789": "Eletrônicos",
-            "790": "Áudio",
-            "791": "Informática",
-            "792": "Celulares",
-            "793": "Eletrodomésticos",
-            "794": "Casa e Decoração",
-            "795": "Ferramentas",
-            "796": "Esportes",
-            "797": "Brinquedos",
-            "798": "Livros",
-            "799": "Moda"
-        }
-        
-        subcategorias = {
-            "854": "Cabos",
-            "831": "Fones de Ouvido",
-            "830": "Caixas de Som",
-            "845": "Smartphones",
-            "842": "Tablets",
-            "835": "Notebooks",
-            "301": "Oxímetros",
-            "302": "Medidores",
-            "425": "Liquidificadores",
-            "426": "Batedeiras",
-            "427": "Cafeteiras"
-        }
-        
-        categoria_nome = categorias.get(categoria, "Produto")
-        subcategoria_nome = subcategorias.get(subcategoria, "")
-        
-        if subcategoria_nome:
-            nome_produto = f"{subcategoria_nome} {categoria_nome} EAN {ean}"
-        else:
-            nome_produto = f"{categoria_nome} EAN {ean}"
-        
-        # Gerar cor aleatória baseada no EAN
-        cores = ["Preto", "Branco", "Azul", "Vermelho", "Cinza", "Prata", "Verde", "Amarelo"]
-        cor = cores[sum(int(d) for d in ean) % len(cores)]
-        
-        # Gerar modelo baseado no EAN
-        modelo = f"MOD-{ean[-6:-2]}"
-        
-        # Gerar voltagem baseada no EAN
-        voltagens = ["110V", "220V", "Bivolt", ""]
-        voltagem = voltagens[sum(int(d) for d in ean) % len(voltagens)]
-        
-        logger.info(f"Produto simulado gerado para o EAN {ean}: {nome_produto}")
-        
-        return {
-            "success": True,
-            "data": {
-                "nome": nome_produto,
-                "cor": cor,
-                "voltagem": voltagem,
-                "modelo": modelo,
-                "ean": ean
-            },
-            "source": "fallback_simulado"
-        }
-    
-    # Caso não tenha um fallback específico
+    logger.info(f"Usando dados genéricos para o EAN {ean}")
     return {
         "success": True,
         "data": {
@@ -676,8 +650,8 @@ def fallback_busca_produto(ean):
             "cor": "",
             "voltagem": "",
             "modelo": "",
-            "ean": ean
+            "ean": ean,
+            "preco_medio": None
         },
-        "source": "fallback_generico",
-        "message": "Produto não encontrado na base de dados. Por favor, preencha as informações manualmente."
+        "source": "fallback_generico"
     }

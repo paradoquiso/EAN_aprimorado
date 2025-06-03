@@ -41,6 +41,10 @@
             font-size: 1.1rem;
             margin-top: 15px;
         }
+        .preco-medio {
+            color: #198754;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -91,17 +95,21 @@
                                 </div>
                             </div>
                             <div class="row">
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label for="cor" class="form-label">Cor</label>
                                     <input type="text" class="form-control" id="cor">
                                 </div>
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label for="voltagem" class="form-label">Voltagem</label>
                                     <input type="text" class="form-control" id="voltagem">
                                 </div>
-                                <div class="col-md-4 mb-3">
+                                <div class="col-md-3 mb-3">
                                     <label for="modelo" class="form-label">Modelo</label>
                                     <input type="text" class="form-control" id="modelo">
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <label for="preco_medio" class="form-label">Preço Médio (R$)</label>
+                                    <input type="number" class="form-control" id="preco_medio" step="0.01" min="0" placeholder="Calculado automaticamente" readonly>
                                 </div>
                             </div>
                             <div class="row">
@@ -139,6 +147,7 @@
                                         <th>Cor</th>
                                         <th>Voltagem</th>
                                         <th>Modelo</th>
+                                        <th>Preço Médio</th>
                                         <th>Quantidade</th>
                                         <th>Ações</th>
                                     </tr>
@@ -151,6 +160,13 @@
                                         <td>{{ produto.cor }}</td>
                                         <td>{{ produto.voltagem }}</td>
                                         <td>{{ produto.modelo }}</td>
+                                        <td class="preco-medio">
+                                            {% if produto.preco_medio %}
+                                                R$ {{ "%.2f"|format(produto.preco_medio) }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
                                         <td>{{ produto.quantidade }}</td>
                                         <td>
                                             <button class="btn btn-danger btn-sm delete-btn" data-id="{{ produto.id }}">Excluir</button>
@@ -158,7 +174,7 @@
                                     </tr>
                                     {% else %}
                                     <tr id="empty-row">
-                                        <td colspan="7" class="text-center">Nenhum produto cadastrado</td>
+                                        <td colspan="8" class="text-center">Nenhum produto cadastrado</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -268,6 +284,18 @@
                             document.getElementById('voltagem').value = data.voltagem || '';
                             document.getElementById('modelo').value = data.modelo || '';
                             
+                            // Preencher o preço médio se disponível
+                            const precoMedioInput = document.getElementById('preco_medio');
+                            if (data.preco_medio !== null && data.preco_medio !== undefined) {
+                                precoMedioInput.value = data.preco_medio.toFixed(2);
+                                precoMedioInput.classList.add('bg-light');
+                                precoMedioInput.classList.add('text-success');
+                            } else {
+                                precoMedioInput.value = '';
+                                precoMedioInput.classList.remove('bg-light');
+                                precoMedioInput.classList.remove('text-success');
+                            }
+                            
                             // NÃO ALTERAR O CAMPO QUANTIDADE - DEIXAR COMO ESTÁ
                             // REMOVIDO: document.getElementById('quantidade').value = data.quantidade || 1;
                             
@@ -309,7 +337,8 @@
                     cor: document.getElementById('cor').value.trim(),
                     voltagem: document.getElementById('voltagem').value.trim(),
                     modelo: document.getElementById('modelo').value.trim(),
-                    quantidade: parseInt(document.getElementById('quantidade').value)
+                    quantidade: parseInt(document.getElementById('quantidade').value),
+                    preco_medio: document.getElementById('preco_medio').value ? parseFloat(document.getElementById('preco_medio').value) : null
                 };
                 
                 if (!produto.ean || !produto.nome || isNaN(produto.quantidade) || produto.quantidade < 1) {
@@ -317,7 +346,7 @@
                     return;
                 }
                 
-                fetch('/api/produtos', {
+                fetch('/api/adicionar-produto', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -329,14 +358,11 @@
                     if (data.error) {
                         showNotification(data.error, 'danger');
                     } else {
-                        // Limpar formulário
+                        // Limpar o formulário
                         productForm.reset();
-                        document.getElementById('quantidade').value = 1;
                         
-                        // Atualizar lista de produtos
-                        updateProductList(data);
-                        
-                        showNotification('Produto adicionado com sucesso!', 'success');
+                        // Recarregar a página para mostrar o produto adicionado
+                        location.reload();
                     }
                 })
                 .catch(error => {
@@ -348,47 +374,38 @@
             // Excluir produto
             document.addEventListener('click', function(e) {
                 if (e.target.classList.contains('delete-btn')) {
-                    const id = e.target.getAttribute('data-id');
+                    const produtoId = e.target.getAttribute('data-id');
                     
                     if (confirm('Tem certeza que deseja excluir este produto?')) {
-                        fetch(`/api/produtos/${id}`, {
-                            method: 'DELETE'
+                        fetch(`/api/excluir-produto/${produtoId}`, {
+                            method: 'POST'
                         })
                         .then(response => response.json())
                         .then(data => {
                             if (data.error) {
                                 showNotification(data.error, 'danger');
                             } else {
-                                // Remover linha da tabela
+                                // Remover a linha da tabela
                                 const row = e.target.closest('tr');
-                                
-                                // Obter a quantidade do produto removido para atualizar o total
-                                const quantidadeRemovida = parseInt(row.cells[5].textContent || 0);
-                                const totalAtual = parseInt(document.getElementById('quantidadeTotal').textContent || 0);
-                                
-                                // Atualizar o total
-                                document.getElementById('quantidadeTotal').textContent = Math.max(0, totalAtual - quantidadeRemovida);
-                                
-                                // Remover a linha
                                 row.remove();
                                 
                                 // Verificar se a tabela está vazia
                                 if (productList.children.length === 0) {
                                     const emptyRow = document.createElement('tr');
                                     emptyRow.id = 'empty-row';
-                                    emptyRow.innerHTML = '<td colspan="7" class="text-center">Nenhum produto cadastrado</td>';
+                                    emptyRow.innerHTML = '<td colspan="8" class="text-center">Nenhum produto cadastrado</td>';
                                     productList.appendChild(emptyRow);
-                                    
-                                    // Zerar o total quando a tabela estiver vazia
-                                    document.getElementById('quantidadeTotal').textContent = '0';
                                 }
                                 
-                                showNotification('Produto removido com sucesso!', 'success');
+                                // Atualizar o total
+                                atualizarTotal();
+                                
+                                showNotification('Produto excluído com sucesso', 'success');
                             }
                         })
                         .catch(error => {
                             console.error('Erro:', error);
-                            showNotification('Erro ao remover produto', 'danger');
+                            showNotification('Erro ao excluir produto', 'danger');
                         });
                     }
                 }
@@ -396,10 +413,10 @@
             
             // Exportar para Excel
             exportBtn.addEventListener('click', function() {
-                window.location.href = '/api/export';
+                window.location.href = '/api/exportar-excel';
             });
             
-            // Abrir modal de confirmação para enviar lista
+            // Enviar lista
             enviarListaBtn.addEventListener('click', function() {
                 // Verificar se há produtos na lista
                 if (document.getElementById('empty-row')) {
@@ -407,46 +424,20 @@
                     return;
                 }
                 
-                // Limpar campos do modal
-                document.getElementById('responsavel').value = '';
-                document.getElementById('pin').value = '';
-                
-                // Mostrar modal de confirmação
+                // Abrir modal de confirmação
                 confirmEnvioModal.show();
             });
             
-            // Carregar a somatória inicial quando a página carrega
-            fetch('/api/produtos')
-                .then(response => response.json())
-                .then(produtos => {
-                    // Calcular somatória inicial
-                    let totalInicial = 0;
-                    produtos.forEach(produto => {
-                        totalInicial += parseInt(produto.quantidade || 0);
-                    });
-                    document.getElementById('quantidadeTotal').textContent = totalInicial;
-                })
-                .catch(error => {
-                    console.error('Erro ao carregar produtos:', error);
-                });
-            
-            // Confirmar envio da lista com PIN
+            // Confirmar envio
             confirmarEnvioBtn.addEventListener('click', function() {
                 const responsavelId = responsavelSelect.value;
                 const pin = pinInput.value;
                 
-                // Validar campos
-                if (!responsavelId) {
-                    showNotification('Por favor, selecione o responsável', 'danger');
+                if (!responsavelId || !pin) {
+                    alert('Por favor, selecione um responsável e digite o PIN');
                     return;
                 }
                 
-                if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-                    showNotification('Por favor, digite um PIN válido de 4 dígitos', 'danger');
-                    return;
-                }
-                
-                // Enviar lista com PIN
                 fetch('/api/enviar-lista', {
                     method: 'POST',
                     headers: {
@@ -454,28 +445,22 @@
                     },
                     body: JSON.stringify({
                         responsavel_id: responsavelId,
-                        pin: pin
+                        responsavel_pin: pin
                     })
                 })
                 .then(response => response.json())
                 .then(data => {
-                    // Fechar modal
                     confirmEnvioModal.hide();
                     
                     if (data.error) {
                         showNotification(data.error, 'danger');
                     } else {
-                        // Limpar a tabela
-                        productList.innerHTML = '';
-                        const emptyRow = document.createElement('tr');
-                        emptyRow.id = 'empty-row';
-                        emptyRow.innerHTML = '<td colspan="7" class="text-center">Nenhum produto cadastrado</td>';
-                        productList.appendChild(emptyRow);
+                        showNotification('Lista enviada com sucesso', 'success');
                         
-                        // Zerar o total quando a lista é enviada
-                        document.getElementById('quantidadeTotal').textContent = '0';
-                        
-                        showNotification(`Lista enviada com sucesso!`, 'success');
+                        // Recarregar a página após 2 segundos
+                        setTimeout(function() {
+                            location.reload();
+                        }, 2000);
                     }
                 })
                 .catch(error => {
@@ -485,47 +470,6 @@
                 });
             });
             
-            // Função para atualizar a lista de produtos
-            function updateProductList(produtos) {
-                // Limpar a tabela
-                productList.innerHTML = '';
-                
-                // Variável para calcular a somatória total
-                let totalQuantidade = 0;
-                
-                if (produtos.length === 0) {
-                    const emptyRow = document.createElement('tr');
-                    emptyRow.id = 'empty-row';
-                    emptyRow.innerHTML = '<td colspan="7" class="text-center">Nenhum produto cadastrado</td>';
-                    productList.appendChild(emptyRow);
-                } else {
-                    produtos.forEach(produto => {
-                        const row = document.createElement('tr');
-                        row.setAttribute('data-id', produto.id);
-                        
-                        // Adicionar a quantidade do produto ao total
-                        totalQuantidade += parseInt(produto.quantidade || 0);
-                        
-                        row.innerHTML = `
-                            <td>${produto.ean}</td>
-                            <td>${produto.nome}</td>
-                            <td>${produto.cor || ''}</td>
-                            <td>${produto.voltagem || ''}</td>
-                            <td>${produto.modelo || ''}</td>
-                            <td>${produto.quantidade}</td>
-                            <td>
-                                <button class="btn btn-danger btn-sm delete-btn" data-id="${produto.id}">Excluir</button>
-                            </td>
-                        `;
-                        
-                        productList.appendChild(row);
-                    });
-                }
-                
-                // Atualizar o elemento que exibe a somatória total
-                document.getElementById('quantidadeTotal').textContent = totalQuantidade;
-            }
-            
             // Função para mostrar notificação
             function showNotification(message, type) {
                 const notification = document.getElementById('notification');
@@ -533,7 +477,6 @@
                 
                 notification.className = `alert alert-${type} alert-dismissible fade show`;
                 notificationMessage.textContent = message;
-                
                 notification.style.display = 'block';
                 
                 // Esconder após 5 segundos
@@ -545,6 +488,27 @@
                 const notification = document.getElementById('notification');
                 notification.style.display = 'none';
             };
+            
+            // Função para atualizar o total de produtos
+            function atualizarTotal() {
+                let total = 0;
+                const rows = productList.querySelectorAll('tr:not(#empty-row)');
+                
+                rows.forEach(row => {
+                    const quantidadeCell = row.cells[6]; // Ajustado para o novo índice após adicionar preço médio
+                    if (quantidadeCell) {
+                        const quantidade = parseInt(quantidadeCell.textContent);
+                        if (!isNaN(quantidade)) {
+                            total += quantidade;
+                        }
+                    }
+                });
+                
+                document.getElementById('quantidadeTotal').textContent = total;
+            }
+            
+            // Atualizar o total ao carregar a página
+            atualizarTotal();
         });
     </script>
 </body>

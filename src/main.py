@@ -840,7 +840,8 @@ def exportar_excel():
         }, inplace=True)
 
         # Criar arquivo Excel em memória
-        output = io.BytesIO(        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name=\'Produtos\')
         output.seek(0)
 

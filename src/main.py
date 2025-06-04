@@ -23,7 +23,7 @@ import re # Importar re para limpar nome de arquivo
 import logging # Adicionar logging
 
 # Configurar logging básico
-logging.basicConfig(level=logging.INFO, format=\'%(asctime)s - %(levelname)s - %(message)s\')
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
@@ -93,13 +93,13 @@ def init_database():
             cursor.execute("PRAGMA table_info(produtos)")
             columns = [column[1] for column in cursor.fetchall()]
             if "responsavel_id" not in columns:
-                logger.info("Adicionando coluna \'responsavel_id\' à tabela produtos...")
+                logger.info("Adicionando coluna 'responsavel_id' à tabela produtos...")
                 cursor.execute("ALTER TABLE produtos ADD COLUMN responsavel_id INTEGER REFERENCES responsaveis(id)")
             if "responsavel_pin" not in columns:
-                logger.info("Adicionando coluna \'responsavel_pin\' à tabela produtos...")
+                logger.info("Adicionando coluna 'responsavel_pin' à tabela produtos...")
                 cursor.execute("ALTER TABLE produtos ADD COLUMN responsavel_pin TEXT")
             if "preco_medio" not in columns:
-                logger.info("Adicionando coluna \'preco_medio\' à tabela produtos...")
+                logger.info("Adicionando coluna 'preco_medio' à tabela produtos...")
                 cursor.execute("ALTER TABLE produtos ADD COLUMN preco_medio REAL")
 
             # Verificar e inserir usuário admin padrão se não existir
@@ -299,7 +299,7 @@ def salvar_produto(produto, usuario_id):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, quantidade FROM produtos WHERE ean = ? AND usuario_id = ? AND enviado = 0", (produto["ean"], usuario_id))
+            cursor.execute("SELECT id, quantidade FROM produtos WHERE ean = ? AND usuario_id = ? AND enviado = 0", (produto['ean'], usuario_id))
             existing = cursor.fetchone()
             timestamp_obj = produto.get("timestamp")
             timestamp_str = (timestamp_obj.astimezone(timezone.utc).isoformat() 
@@ -313,7 +313,7 @@ def salvar_produto(produto, usuario_id):
                                (nova_quantidade, timestamp_str, preco_medio, existing["id"]))
             else:
                 cursor.execute("INSERT INTO produtos (ean, nome, cor, voltagem, modelo, quantidade, usuario_id, timestamp, enviado, preco_medio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
-                               (produto["ean"], produto["nome"], produto.get("cor"), produto.get("voltagem"), produto.get("modelo"), produto["quantidade"], usuario_id, timestamp_str, preco_medio))
+                               (produto['ean'], produto["nome"], produto.get("cor"), produto.get("voltagem"), produto.get("modelo"), produto["quantidade"], usuario_id, timestamp_str, preco_medio))
             conn.commit()
         return True
     except sqlite3.Error as e:
@@ -426,11 +426,11 @@ def login():
         senha = request.form["senha"]
         usuario = verificar_usuario(nome, senha)
         if usuario:
-            session["usuario_id"] = usuario["id"]
-            session["usuario_nome"] = usuario["nome"]
+            session["usuario_id"] = usuario['id']
+            session['usuario_nome'] = usuario["nome"]
             session["is_admin"] = bool(usuario["admin"])
             flash("Login realizado com sucesso!", "success")
-            logger.info(f"Usuário {nome} (ID: {usuario["id"]}) logado com sucesso.")
+            logger.info(f"Usuário {nome} (ID: {usuario['id']}) logado com sucesso.")
             return redirect(url_for("index"))
         else:
             flash("Nome de usuário ou senha inválidos.", "danger")
@@ -471,7 +471,7 @@ def ml_login():
 
     auth_url = get_authorization_url()
     if auth_url:
-        logger.info(f"Redirecionando usuário {session["usuario_nome"]} para autorização ML.")
+        logger.info(f"Redirecionando usuário {session['usuario_nome']} para autorização ML.")
         return redirect(auth_url)
     else:
         flash("Erro ao gerar URL de autorização do Mercado Livre. Verifique as configurações (variáveis de ambiente).", "danger")
@@ -503,7 +503,7 @@ def ml_callback():
     if token_info:
         session["ml_token"] = token_info # Armazena todo o dict do token na sessão
         flash("Aplicação autorizada com sucesso no Mercado Livre!", "success")
-        logger.info(f"Token ML obtido e armazenado na sessão para o usuário {session["usuario_nome"]}.")
+        logger.info(f"Token ML obtido e armazenado na sessão para o usuário {session['usuario_nome']}.")
     else:
         flash("Falha ao obter o token de acesso do Mercado Livre após autorização.", "danger")
         logger.error("Falha ao trocar código por token após callback ML.")
@@ -576,10 +576,10 @@ def adicionar_produto():
         }
         if salvar_produto(produto, session["usuario_id"]):
             flash("Produto adicionado com sucesso!", "success")
-            logger.info(f"Produto EAN {produto["ean"]} adicionado/atualizado por usuário {session["usuario_nome"]}.")
+            logger.info(f"Produto EAN {produto['ean']} adicionado/atualizado por usuário {session['usuario_nome']}.")
         else:
             flash("Erro ao salvar o produto.", "danger")
-            logger.error(f"Falha ao salvar produto EAN {produto["ean"]} por usuário {session["usuario_nome"]}.")
+            logger.error(f"Falha ao salvar produto EAN {produto['ean']} por usuário {session['usuario_nome']}.")
     except ValueError:
         flash("Quantidade inválida.", "danger")
     except Exception as e:
@@ -596,10 +596,10 @@ def deletar_produto_route(produto_id):
 
     if deletar_produto(produto_id, session["usuario_id"]):
         flash("Produto deletado com sucesso!", "success")
-        logger.info(f"Produto ID {produto_id} deletado por usuário {session["usuario_nome"]}.")
+        logger.info(f"Produto ID {produto_id} deletado por usuário {session['usuario_nome']}.")
     else:
         flash("Erro ao deletar o produto.", "danger")
-        logger.error(f"Falha ao deletar produto ID {produto_id} por usuário {session["usuario_nome"]}.")
+        logger.error(f"Falha ao deletar produto ID {produto_id} por usuário {session['usuario_nome']}.")
     return redirect(url_for("index"))
 
 @app.route("/enviar_lista", methods=["POST"])
@@ -619,13 +619,13 @@ def enviar_lista():
 
     if resultado_envio and resultado_envio not in ["erro_db", "erro_inesperado"]:
         flash(f"Lista enviada com sucesso em {data_brasileira_filter(resultado_envio)}!", "success")
-        logger.info(f"Lista enviada por usuário {session["usuario_nome"]} para responsável ID {responsavel_id}.")
+        logger.info(f"Lista enviada por usuário {session['usuario_nome']} para responsável ID {responsavel_id}.")
     elif resultado_envio is None:
          flash("PIN inválido para o responsável selecionado.", "danger")
-         logger.warning(f"Tentativa de envio de lista falhou (PIN inválido) por usuário {session["usuario_nome"]} para responsável ID {responsavel_id}.")
+         logger.warning(f"Tentativa de envio de lista falhou (PIN inválido) por usuário {session['usuario_nome']} para responsável ID {responsavel_id}.")
     else:
         flash("Erro ao enviar a lista.", "danger")
-        logger.error(f"Erro ao enviar lista por usuário {session["usuario_nome"]}. Resultado: {resultado_envio}")
+        logger.error(f"Erro ao enviar lista por usuário {session['usuario_nome']}. Resultado: {resultado_envio}")
         
     return redirect(url_for("index"))
 
@@ -650,10 +650,10 @@ def validar_produto_route(produto_id):
         return jsonify({"success": False, "message": "Acesso não autorizado."}), 403
 
     if validar_produto(produto_id, session["usuario_id"]):
-        logger.info(f"Produto ID {produto_id} validado por admin {session["usuario_nome"]}.")
-        return jsonify({"success": True, "message": "Produto validado.", "validador": session["usuario_nome"], "data_validacao": formatar_data_brasileira(datetime.now(timezone.utc))})
+        logger.info(f"Produto ID {produto_id} validado por admin {session['usuario_nome']}.")
+        return jsonify({"success": True, "message": "Produto validado.", "validador": session['usuario_nome'], "data_validacao": formatar_data_brasileira(datetime.now(timezone.utc))})
     else:
-        logger.error(f"Falha ao validar produto ID {produto_id} por admin {session["usuario_nome"]}.")
+        logger.error(f"Falha ao validar produto ID {produto_id} por admin {session['usuario_nome']}.")
         return jsonify({"success": False, "message": "Erro ao validar produto."}), 500
 
 @app.route("/admin/desvalidar/<int:produto_id>", methods=["POST"])
@@ -662,10 +662,10 @@ def desvalidar_produto_route(produto_id):
         return jsonify({"success": False, "message": "Acesso não autorizado."}), 403
 
     if desvalidar_produto(produto_id):
-        logger.info(f"Produto ID {produto_id} desvalidado por admin {session["usuario_nome"]}.")
+        logger.info(f"Produto ID {produto_id} desvalidado por admin {session['usuario_nome']}.")
         return jsonify({"success": True, "message": "Validação removida."})
     else:
-        logger.error(f"Falha ao desvalidar produto ID {produto_id} por admin {session["usuario_nome"]}.")
+        logger.error(f"Falha ao desvalidar produto ID {produto_id} por admin {session['usuario_nome']}.")
         return jsonify({"success": False, "message": "Erro ao remover validação."}), 500
 
 @app.route("/admin/exportar")
@@ -696,7 +696,7 @@ def exportar_excel():
         for col in ["Data Cadastro", "Data Envio", "Data Validação"]:
             if col in df.columns:
                  # Tenta converter para datetime e depois formatar, tratando erros
-                 df[col] = pd.to_datetime(df[col], errors=\'coerce\').dt.strftime("%d/%m/%Y %H:%M:%S")
+                 df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime("%d/%m/%Y %H:%M:%S")
                  df[col] = df[col].fillna("") # Substitui NaT por string vazia
         
         # Formatar coluna Validado
@@ -709,8 +709,8 @@ def exportar_excel():
 
         # Criar arquivo Excel em memória
         output = io.BytesIO()
-        with pd.ExcelWriter(output, engine=\'xlsxwriter\') as writer:
-            df.to_excel(writer, index=False, sheet_name=\'Produtos Enviados\')
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Produtos Enviados')
             # Opcional: ajustar largura das colunas
             workbook = writer.book
             worksheet = writer.sheets["Produtos Enviados"]
@@ -724,8 +724,8 @@ def exportar_excel():
         timestamp_atual = datetime.now().strftime("%Y%m%d_%H%M%S")
         nome_arquivo = f"export_produtos_enviados_{timestamp_atual}.xlsx"
         
-        logger.info(f"Exportação Excel gerada por admin {session["usuario_nome"]}.")
-        return send_file(output, download_name=nome_arquivo, as_attachment=True, mimetype=\'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\')
+        logger.info(f"Exportação Excel gerada por admin {session['usuario_nome']}.")
+        return send_file(output, download_name=nome_arquivo, as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
     except Exception as e:
         flash(f"Erro ao gerar o arquivo Excel: {str(e)}", "danger")

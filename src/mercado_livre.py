@@ -306,7 +306,7 @@ def buscar_produto_por_ean(ean):
                     return fallback_busca_produto(ean)
             
             elif response_search.status_code == 401:
-                logger.error(f"Erro de autenticação (401) na API sites/search. Token inválido ou expirado.")
+                logger.error(f"Erro de autenticação (401) na API sites/search. Token inválido ou expirado. Resposta: {response_search.text}") # Log response text
                 # Limpa o cache para forçar a obtenção de um novo token na próxima vez
                 global _ml_token_cache
                 _ml_token_cache["access_token"] = None

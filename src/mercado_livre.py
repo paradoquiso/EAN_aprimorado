@@ -15,11 +15,110 @@ logger = logging.getLogger(__name__)
 CLIENT_ID = os.environ.get("ML_CLIENT_ID") or os.environ.get("MERCADO_LIVRE_CLIENT_ID")
 CLIENT_SECRET = os.environ.get("ML_CLIENT_SECRET")
 
+# URL de callback para OAuth (pode ser configurada via variável de ambiente)
+REDIRECT_URI = os.environ.get("ML_REDIRECT_URI", "http://localhost:5000/callback")
+
 # Variável global para armazenar o token e seu tempo de expiração
 _ml_token_cache = {
     "access_token": None,
     "expires_at": 0
 }
+
+def get_authorization_url():
+    """
+    Gera a URL de autorização para o fluxo OAuth do Mercado Livre.
+    Retorna a URL ou None se as credenciais não estiverem configuradas.
+    """
+    if not CLIENT_ID:
+        logger.error("Client ID do Mercado Livre não configurado nas variáveis de ambiente.")
+        return None
+    
+    # Parâmetros para a URL de autorização
+    params = {
+        "response_type": "code",
+        "client_id": CLIENT_ID,
+        "redirect_uri": REDIRECT_URI
+    }
+    
+    # Monta a URL de autorização
+    base_url = "https://auth.mercadolibre.com.br/authorization"
+    auth_url = f"{base_url}?{urllib.parse.urlencode(params)}"
+    
+    logger.info(f"URL de autorização gerada: {auth_url}")
+    return auth_url
+
+def exchange_code_for_token(authorization_code):
+    """
+    Troca o código de autorização por um token de acesso.
+    Retorna um dicionário com os dados do token ou None em caso de erro.
+    """
+    if not CLIENT_ID or not CLIENT_SECRET:
+        logger.error("Client ID ou Client Secret do Mercado Livre não configurados nas variáveis de ambiente.")
+        return None
+    
+    url = "https://api.mercadolibre.com/oauth/token"
+    payload = {
+        "grant_type": "authorization_code",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "code": authorization_code,
+        "redirect_uri": REDIRECT_URI
+    }
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    try:
+        response = requests.post(url, data=payload, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            logger.info("Token de acesso obtido com sucesso via authorization_code.")
+            return token_data
+        else:
+            logger.error(f"Erro ao trocar código por token: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Exceção ao trocar código por token: {str(e)}")
+        return None
+
+def refresh_access_token(refresh_token):
+    """
+    Atualiza o token de acesso usando o refresh token.
+    Retorna um dicionário com os novos dados do token ou None em caso de erro.
+    """
+    if not CLIENT_ID or not CLIENT_SECRET:
+        logger.error("Client ID ou Client Secret do Mercado Livre não configurados nas variáveis de ambiente.")
+        return None
+    
+    url = "https://api.mercadolibre.com/oauth/token"
+    payload = {
+        "grant_type": "refresh_token",
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "refresh_token": refresh_token
+    }
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    
+    try:
+        response = requests.post(url, data=payload, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            token_data = response.json()
+            logger.info("Token de acesso atualizado com sucesso via refresh_token.")
+            return token_data
+        else:
+            logger.error(f"Erro ao atualizar token: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Exceção ao atualizar token: {str(e)}")
+        return None
 
 def get_ml_token_client_credentials():
     """
@@ -239,4 +338,4 @@ if __name__ == '__main__':
     
     print(f"Testando busca para EAN: {test_ean}")
     resultado = buscar_produto_por_ean(test_ean)
-    print(json.dumps(resultado, indent=2, ensure_ascii=False))
+    print(json.dumps(resultado, indent=2, ensure_ascii=False)

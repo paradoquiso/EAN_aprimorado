@@ -650,6 +650,187 @@ def exportar_lista(usuario_id, data_envio_iso):
         flash(f"Erro inesperado ao exportar a lista: {e}", "danger")
         return redirect(url_for("admin_dashboard"))
 
+# --- Rotas da API ---
+@app.route("/api/responsaveis", methods=["GET"])
+def api_responsaveis():
+    """Retorna lista de responsáveis em formato JSON"""
+    if "usuario_id" not in session:
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+    
+    responsaveis = obter_responsaveis()
+    return jsonify({"success": True, "responsaveis": responsaveis})
+
+@app.route("/api/produtos", methods=["GET"])
+def api_produtos_get():
+    """Retorna lista de produtos do usuário em formato JSON"""
+    if "usuario_id" not in session:
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+    
+    usuario_id = session["usuario_id"]
+    produtos = carregar_produtos_usuario(usuario_id, apenas_nao_enviados=True)
+    return jsonify({"success": True, "produtos": produtos})
+
+@app.route("/api/produtos", methods=["POST"])
+def api_produtos_post():
+    """Adiciona um novo produto via API"""
+    if "usuario_id" not in session:
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "message": "Dados não fornecidos."}), 400
+
+    ean = data.get("ean")
+    nome = data.get("nome")
+    cor = data.get("cor", "")
+    voltagem = data.get("voltagem", "")
+    modelo = data.get("modelo", "")
+    quantidade = data.get("quantidade")
+    preco_medio = data.get("preco_medio")
+
+    if not ean or not nome or not quantidade:
+        return jsonify({"success": False, "message": "EAN, Nome do Produto e Quantidade são obrigatórios."}), 400
+
+    try:
+        quantidade = int(quantidade)
+        if quantidade <= 0:
+            raise ValueError("Quantidade deve ser positiva.")
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Quantidade inválida."}), 400
+
+    if preco_medio is not None:
+        try:
+            preco_medio = float(preco_medio)
+        except (ValueError, TypeError):
+            preco_medio = None
+
+    produto = {
+        "ean": ean,
+        "nome": nome,
+        "cor": cor,
+        "voltagem": voltagem,
+        "modelo": modelo,
+        "quantidade": quantidade,
+        "preco_medio": preco_medio
+    }
+
+    if salvar_produto(produto, session["usuario_id"]):
+        return jsonify({"success": True, "message": "Produto adicionado com sucesso!"})
+    else:
+        return jsonify({"success": False, "message": "Erro ao adicionar produto."}), 500
+
+@app.route("/api/produtos/<int:produto_id>", methods=["DELETE"])
+def api_produtos_delete(produto_id):
+    """Remove um produto via API"""
+    if "usuario_id" not in session:
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+
+    if deletar_produto(produto_id, session["usuario_id"]):
+        return jsonify({"success": True, "message": "Produto removido com sucesso!"})
+    else:
+        return jsonify({"success": False, "message": "Erro ao remover produto."}), 500
+
+@app.route("/api/buscar_produto", methods=["GET"])
+def api_buscar_produto():
+    """Busca produto por EAN via API"""
+    if "usuario_id" not in session:
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+
+    ean = request.args.get("ean")
+    if not ean:
+        return jsonify({"success": False, "message": "EAN não fornecido."}), 400
+
+    # 1. Tenta buscar localmente (produtos não enviados do usuário)
+    produto_local = buscar_produto_local(ean, session["usuario_id"])
+    if produto_local:
+        print(f"Produto {ean} encontrado localmente para usuário {session['usuario_id']}")
+        return jsonify({
+            "success": True, 
+            "nome": produto_local["nome"],
+            "cor": produto_local.get("cor", ""),
+            "voltagem": produto_local.get("voltagem", ""),
+            "modelo": produto_local.get("modelo", ""),
+            "preco_medio": produto_local.get("preco_medio", None),
+            "message": "Produto encontrado localmente (não enviado)."
+        })
+
+    # 2. Se não encontrar localmente, busca online (Mercado Livre)
+    print(f"Produto {ean} não encontrado localmente para usuário {session['usuario_id']}. Buscando online...")
+    try:
+        resultado_online = buscar_produto_online(ean)
+        if resultado_online and resultado_online.get("nome"):
+            print(f"Produto {ean} encontrado online: {resultado_online}")
+            return jsonify({
+                "success": True, 
+                "nome": resultado_online["nome"],
+                "cor": resultado_online.get("cor", ""),
+                "voltagem": resultado_online.get("voltagem", ""),
+                "modelo": resultado_online.get("modelo", ""),
+                "preco_medio": resultado_online.get("preco_medio", None),
+                "message": "Produto encontrado online."
+            })
+        else:
+            print(f"Produto {ean} não encontrado online.")
+            return jsonify({"success": False, "message": "Produto não encontrado online."}), 404
+    except Exception as e:
+        print(f"Erro ao buscar produto online para EAN {ean}: {e}")
+        return jsonify({"success": False, "message": f"Erro ao buscar online: {e}"}), 500
+
+@app.route("/api/enviar_lista", methods=["POST"])
+def api_enviar_lista():
+    """Envia lista de produtos via API"""
+    if "usuario_id" not in session:
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "message": "Dados não fornecidos."}), 400
+
+    responsavel_id = data.get("responsavel_id")
+    pin = data.get("pin")
+
+    if not responsavel_id or not pin:
+        return jsonify({"success": False, "message": "Selecione o responsável e digite o PIN."}), 400
+
+    resultado_envio = enviar_lista_produtos(session["usuario_id"], responsavel_id, pin)
+
+    if resultado_envio is None:
+        return jsonify({"success": False, "message": "PIN inválido para o responsável selecionado."}), 400
+    elif resultado_envio == "erro_db":
+        return jsonify({"success": False, "message": "Erro no banco de dados ao tentar enviar a lista."}), 500
+    elif resultado_envio == "erro_inesperado":
+        return jsonify({"success": False, "message": "Erro inesperado ao tentar enviar a lista."}), 500
+    else:
+        return jsonify({"success": True, "message": "Lista de produtos enviada com sucesso!", "data_envio": resultado_envio})
+
+@app.route("/api/validar-lista", methods=["POST"])
+def api_validar_lista():
+    """Valida uma lista de produtos via API"""
+    if not session.get("is_admin"):
+        return jsonify({"success": False, "message": "Acesso não autorizado."}), 403
+
+    data = request.get_json()
+    if not data:
+        return jsonify({"success": False, "message": "Dados não fornecidos."}), 400
+
+    produto_ids = data.get("produto_ids", [])
+    if not produto_ids:
+        return jsonify({"success": False, "message": "Nenhum produto especificado para validação."}), 400
+
+    sucessos = 0
+    erros = 0
+    
+    for produto_id in produto_ids:
+        if validar_produto(produto_id, session["usuario_id"]):
+            sucessos += 1
+        else:
+            erros += 1
+
+    if erros == 0:
+        return jsonify({"success": True, "message": f"Todos os {sucessos} produtos foram validados com sucesso."})
+    else:
+        return jsonify({"success": False, "message": f"{sucessos} produtos validados, {erros} falharam."})
+
 if __name__ == "__main__":
     # Usar host='0.0.0.0' para ser acessível externamente (importante para Render)
     # Debug=True é útil para desenvolvimento, mas DESATIVE em produção!

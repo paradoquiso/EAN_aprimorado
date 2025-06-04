@@ -339,42 +339,88 @@
                     showNotification('Por favor, informe o código EAN', 'warning');
                     return;
                 }
-                
-                showNotification('Buscando produto...', 'info');
-                
-                fetch(`/api/buscar_produto?ean=${ean}`)
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(err => { throw new Error(err.error || `Erro ${response.status}`) });
-                    }
-                    return response.json();
+
+                showNotification('Buscando produto online...', 'info'); // Updated message
+
+                // Corrected fetch call: POST to /buscar_ean with form data
+                fetch('/buscar_ean', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded', // Send as form data
+                    },
+                    body: `ean=${encodeURIComponent(ean)}` // Encode EAN and send in body
                 })
+                .then(response => {
+                     // Handle potential non-JSON responses first (like 401 HTML page if token fails)
+                     if (!response.ok) {
+                         // Try to parse JSON for specific error messages from backend
+                         return response.json().then(err => {
+                             // Check for specific error flags from backend
+                             if (response.status === 401 && err.needs_ml_auth) {
+                                 // Specific handling for ML auth needed
+                                 showNotification(err.message || 'Autorização do Mercado Livre necessária ou expirada.', 'warning');
+                                 // Consider adding a button/link here to redirect to /ml_login
+                             } else {
+                                 // Throw a generic error with the message from backend if available
+                                 throw new Error(err.message || `Erro ${response.status}`);
+                             }
+                             // Return rejection to prevent falling into the next .then
+                             return Promise.reject(new Error(err.message || `Erro ${response.status}`));
+                         }).catch(jsonError => {
+                             // If response is not JSON (e.g., HTML error page), throw a generic error based on status text
+                             console.error("Response was not valid JSON:", jsonError);
+                             // Check for the original error reported by the user
+                             if (response.headers.get("content-type")?.includes("text/html")) {
+                                 // This is likely the "Unexpected token '<'" scenario
+                                 throw new Error(`Erro ${response.status}: Recebido HTML inesperado do servidor. Verifique os logs do servidor ou a autorização do Mercado Livre.`);
+                             } else {
+                                 throw new Error(`Erro ${response.status}: ${response.statusText}. A resposta do servidor não foi JSON.`);
+                             }
+                         });
+                     }
+                     // If response is OK (2xx), parse JSON
+                     return response.json();
+                 })
                 .then(data => {
-                    if (data.nome) {
-                        nomeInput.value = data.nome;
-                        
-                        // Preencher campos adicionais se disponíveis
-                        if (data.cor) corInput.value = data.cor;
-                        if (data.voltagem) voltagemInput.value = data.voltagem;
-                        if (data.modelo) modeloInput.value = data.modelo;
-                        
-                        // Exibir preço médio se disponível
-                        if (data.preco_medio) {
-                            precoMedioDisplay.value = formatCurrency(data.preco_medio);
-                            precoMedioHidden.value = data.preco_medio;
+                    // Backend returns {success: bool, data: {...}, message: str, source: str}
+                    if (data.success) {
+                        const produtoData = data.data;
+                        nomeInput.value = produtoData.nome || ''; // Use fallback for safety
+                        corInput.value = produtoData.cor || '';
+                        voltagemInput.value = produtoData.voltagem || '';
+                        modeloInput.value = produtoData.modelo || '';
+
+                        if (produtoData.preco_medio !== null && produtoData.preco_medio !== undefined) {
+                            precoMedioDisplay.value = formatCurrency(produtoData.preco_medio);
+                            precoMedioHidden.value = produtoData.preco_medio;
                         } else {
                             precoMedioDisplay.value = "N/A";
                             precoMedioHidden.value = "";
                         }
-                        
-                        showNotification('Produto encontrado!', 'success');
+                        showNotification(data.message || 'Produto encontrado!', 'success');
                     } else {
-                        showNotification('Produto não encontrado. Preencha os dados manualmente.', 'warning');
+                        // Handle failure case reported by backend (e.g., product not found, ML API error)
+                        showNotification(data.message || 'Produto não encontrado ou erro na busca online.', 'warning');
+                        // Clear fields except EAN
+                        nomeInput.value = '';
+                        corInput.value = '';
+                        voltagemInput.value = '';
+                        modeloInput.value = '';
+                        precoMedioDisplay.value = '';
+                        precoMedioHidden.value = '';
                     }
                 })
                 .catch(error => {
-                    console.error('Erro na busca:', error);
-                    showNotification(`Erro na busca: ${error.message}`, 'danger');
+                    // Catch errors from fetch itself or thrown errors from .then blocks
+                    console.error('Erro na busca EAN:', error);
+                    showNotification(`Erro na busca: ${error.message || 'Ocorreu um erro inesperado.'}`, 'danger');
+                    // Clear fields on error except EAN
+                    nomeInput.value = '';
+                    corInput.value = '';
+                    voltagemInput.value = '';
+                    modeloInput.value = '';
+                    precoMedioDisplay.value = '';
+                    precoMedioHidden.value = '';
                 });
             });
             

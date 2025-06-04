@@ -438,7 +438,7 @@ def buscar_ean():
     # 1. Tenta buscar localmente primeiro (produtos não enviados do usuário)
     produto_local = buscar_produto_local(ean, session["usuario_id"])
     if produto_local:
-        print(f"Produto {ean} encontrado localmente para usuário {session["usuario_id"]}")
+        print(f"Produto {ean} encontrado localmente para usuário {session['usuario_id']}")
         return jsonify({
             "success": True,
             "data": produto_local,
@@ -477,5 +477,5 @@ def adicionar_produto():
         try:
             preco_medio = float(preco_medio_str)
         except (ValueError, TypeError):
-            print(f"Aviso: Preço médio 
+            print(f"Aviso: Preço médio recebido ('{preco_medio_str}') não é um número válido. Será ignorado.")
 (Content truncated due to size limit. Use line ranges to read in chunks)

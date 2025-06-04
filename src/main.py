@@ -10,31 +10,15 @@ import pandas as pd
 import json
 from werkzeug.security import generate_password_hash, check_password_hash
 from src.utils import formatar_data_brasileira
-from src.mercado_livre import buscar_produto_por_ean as buscar_produto_online
-
-# Imports adicionados para OAuth e PKCE
-import secrets
-import hashlib
-import base64
+# Importa a função de busca que agora usa client_credentials automaticamente
+from src.mercado_livre import buscar_produto_por_ean as buscar_produto_online 
 import re # Importar re para limpar nome de arquivo
 
 app = Flask(__name__)
 # É CRUCIAL usar uma chave secreta forte e, preferencialmente, de variável de ambiente
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ean_app_secret_key_default_dev_only") 
 
-# --- Configurações do Mercado Livre --- 
-# Tenta ler variáveis de ambiente com nomes comuns, depois usa o padrão.
-# Garanta que os nomes no Render correspondam a uma das opções (ML_CLIENT_ID ou MERCADO_LIVRE_CLIENT_ID)
-ML_CLIENT_ID = os.environ.get("ML_CLIENT_ID") or os.environ.get("MERCADO_LIVRE_CLIENT_ID", "5127568931658868") 
-ML_CLIENT_SECRET = os.environ.get("ML_CLIENT_SECRET", "u6SV0QlYRqNgCYHvkebe7etpxwYRC1EN")
-# Certifique-se que esta URI está registrada no painel do Mercado Livre
-ML_REDIRECT_URI = os.environ.get("ML_REDIRECT_URI", "https://ean-aprimorado.onrender.com/ml_callback") 
-ML_AUTH_URL = "https://auth.mercadolivre.com.br/authorization"
-ML_TOKEN_URL = "https://api.mercadolibre.com/oauth/token"
-# --------------------------------------
-
 # Configuração do banco de dados SQLite
-# Usar um caminho relativo à raiz do projeto para compatibilidade com Render
 DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "produtos.db")
 print(f"Usando banco de dados SQLite em: {DATABASE_PATH}")
 
@@ -50,7 +34,7 @@ def init_database():
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("PRAGMA foreign_keys = ON;")
-            # Criar tabela usuarios se não existir
+            # Criar tabela usuarios se não existir (removidas colunas de token ML)
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,20 +43,6 @@ def init_database():
                 admin INTEGER DEFAULT 0
             );
             """)
-            # Adicionar colunas de token à tabela usuarios se não existirem
-            try:
-                cursor.execute("ALTER TABLE usuarios ADD COLUMN ml_access_token TEXT")
-            except sqlite3.OperationalError:
-                pass # Ignora se a coluna já existe
-            try:
-                cursor.execute("ALTER TABLE usuarios ADD COLUMN ml_refresh_token TEXT")
-            except sqlite3.OperationalError:
-                pass # Ignora se a coluna já existe
-            try:
-                cursor.execute("ALTER TABLE usuarios ADD COLUMN ml_token_expires_at REAL")
-            except sqlite3.OperationalError:
-                pass # Ignora se a coluna já existe
-
             # Criar tabela responsaveis se não existir
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS responsaveis (
@@ -100,7 +70,7 @@ def init_database():
                 data_validacao TEXT,
                 responsavel_id INTEGER,
                 responsavel_pin TEXT,
-                preco_medio REAL,
+                preco_medio REAL, 
                 FOREIGN KEY (usuario_id) REFERENCES usuarios (id),
                 FOREIGN KEY (validador_id) REFERENCES usuarios (id),
                 FOREIGN KEY (responsavel_id) REFERENCES responsaveis (id)
@@ -122,7 +92,6 @@ def init_database():
             print("Banco de dados SQLite inicializado/verificado com sucesso.")
     except sqlite3.Error as e:
         print(f"Erro CRÍTICO ao inicializar o banco de dados SQLite: {e}")
-        # Considerar lançar a exceção ou tratar de forma mais robusta
 
 # Inicializar responsáveis com PINs (chamada por init_database)
 def inicializar_responsaveis(conn):
@@ -149,15 +118,18 @@ init_database()
 def data_brasileira_filter(data):
     if isinstance(data, str):
         try:
+            # Tenta converter de ISO format com ou sem Z
             data = datetime.fromisoformat(data.replace("Z", "+00:00"))
         except ValueError:
             try:
+                 # Tenta converter de formato com microsegundos
                  data = datetime.strptime(data, "%Y-%m-%d %H:%M:%S.%f")
             except ValueError:
                  try:
+                     # Tenta converter de formato sem microsegundos
                      data = datetime.strptime(data, "%Y-%m-%d %H:%M:%S")
                  except ValueError:
-                     return data
+                     return data # Retorna a string original se não conseguir converter
     return formatar_data_brasileira(data)
 
 # Obter todos os responsáveis
@@ -235,36 +207,6 @@ def obter_nome_usuario(usuario_id):
         print(f"Erro ao obter nome do usuário: {e}")
         return None
 
-def salvar_tokens_ml(usuario_id, access_token, refresh_token, expires_in):
-    try:
-        expires_at = datetime.now(timezone.utc).timestamp() + expires_in
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-            UPDATE usuarios 
-            SET ml_access_token = ?, ml_refresh_token = ?, ml_token_expires_at = ?
-            WHERE id = ?
-            """, (access_token, refresh_token, expires_at, usuario_id))
-            conn.commit()
-            print(f"Tokens do ML salvos para o usuário {usuario_id}")
-            return True
-    except sqlite3.Error as e:
-        print(f"Erro ao salvar tokens do ML para usuário {usuario_id}: {e}")
-        return False
-
-def obter_tokens_ml(usuario_id):
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT ml_access_token, ml_refresh_token, ml_token_expires_at FROM usuarios WHERE id = ?", (usuario_id,))
-            tokens = cursor.fetchone()
-            if tokens and tokens["ml_access_token"]:
-                return dict(tokens)
-            return None
-    except sqlite3.Error as e:
-        print(f"Erro ao obter tokens do ML para usuário {usuario_id}: {e}")
-        return None
-
 # --- Funções de Produtos ---
 def carregar_produtos_usuario(usuario_id, apenas_nao_enviados=False):
     try:
@@ -326,7 +268,7 @@ def salvar_produto(produto, usuario_id):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM produtos WHERE ean = ? AND usuario_id = ? AND enviado = 0", (produto["ean"], usuario_id))
+            cursor.execute("SELECT id, quantidade FROM produtos WHERE ean = ? AND usuario_id = ? AND enviado = 0", (produto["ean"], usuario_id))
             existing = cursor.fetchone()
             timestamp_obj = produto.get("timestamp")
             timestamp_str = (timestamp_obj.astimezone(timezone.utc).isoformat() 
@@ -335,8 +277,9 @@ def salvar_produto(produto, usuario_id):
             preco_medio = produto.get("preco_medio")
 
             if existing:
-                cursor.execute("UPDATE produtos SET quantidade = quantidade + ?, timestamp = ?, preco_medio = ? WHERE ean = ? AND usuario_id = ? AND enviado = 0",
-                               (produto["quantidade"], timestamp_str, preco_medio, produto["ean"], usuario_id))
+                nova_quantidade = existing["quantidade"] + produto["quantidade"]
+                cursor.execute("UPDATE produtos SET quantidade = ?, timestamp = ?, preco_medio = ? WHERE id = ?",
+                               (nova_quantidade, timestamp_str, preco_medio, existing["id"]))
             else:
                 cursor.execute("INSERT INTO produtos (ean, nome, cor, voltagem, modelo, quantidade, usuario_id, timestamp, enviado, preco_medio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
                                (produto["ean"], produto["nome"], produto.get("cor"), produto.get("voltagem"), produto.get("modelo"), produto["quantidade"], usuario_id, timestamp_str, preco_medio))
@@ -366,56 +309,48 @@ def enviar_lista_produtos(usuario_id, responsavel_id, pin):
             return data_envio_str # Retorna a string da data de envio
     except sqlite3.Error as e:
         print(f"Erro ao enviar lista de produtos: {e}")
-        return None # Retorna None em caso de erro de DB
+        return "erro_db"
+    except Exception as e:
+        print(f"Erro inesperado ao enviar lista: {e}")
+        return "erro_inesperado"
 
-def validar_lista(data_envio_str, nome_usuario, validador_id):
+def deletar_produto(produto_id, usuario_id):
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id FROM usuarios WHERE nome = ?", (nome_usuario,))
-            usuario = cursor.fetchone()
-            if not usuario:
-                print(f"Usuário não encontrado: {nome_usuario}")
-                return False
-            usuario_id = usuario["id"]
-            data_validacao_str = datetime.now(timezone.utc).isoformat()
-            cursor.execute("UPDATE produtos SET validado = 1, validador_id = ?, data_validacao = ? WHERE usuario_id = ? AND data_envio = ? AND enviado = 1",
-                           (validador_id, data_validacao_str, usuario_id, data_envio_str))
-            conn.commit()
-            print(f"Lista de {nome_usuario} enviada em {data_envio_str} validada por {validador_id}")
-            return True
-    except sqlite3.Error as e:
-        print(f"Erro ao validar lista: {e}")
-        return False
-
-def excluir_produto(produto_id, usuario_id):
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            # Garante que o usuário só pode excluir seus próprios produtos não enviados
             cursor.execute("DELETE FROM produtos WHERE id = ? AND usuario_id = ? AND enviado = 0", (produto_id, usuario_id))
             conn.commit()
-            return cursor.rowcount > 0 # Retorna True se uma linha foi afetada
+        return True
     except sqlite3.Error as e:
-        print(f"Erro ao excluir produto: {e}")
+        print(f"Erro ao deletar produto: {e}")
+        return False
+
+def validar_produto(produto_id, validador_id):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            data_validacao_str = datetime.now(timezone.utc).isoformat()
+            cursor.execute("UPDATE produtos SET validado = 1, validador_id = ?, data_validacao = ? WHERE id = ? AND enviado = 1",
+                           (validador_id, data_validacao_str, produto_id))
+            conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Erro ao validar produto: {e}")
+        return False
+
+def desvalidar_produto(produto_id):
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE produtos SET validado = 0, validador_id = NULL, data_validacao = NULL WHERE id = ? AND enviado = 1",
+                           (produto_id,))
+            conn.commit()
+        return True
+    except sqlite3.Error as e:
+        print(f"Erro ao desvalidar produto: {e}")
         return False
 
 # --- Rotas Flask ---
-@app.route("/")
-def index():
-    if "usuario_id" not in session:
-        return redirect(url_for("login"))
-    usuario_id = session["usuario_id"]
-    produtos = carregar_produtos_usuario(usuario_id, apenas_nao_enviados=True)
-    
-    # Verificar se o usuário atual tem tokens ML válidos
-    ml_authorized = False
-    tokens = obter_tokens_ml(usuario_id)
-    if tokens and tokens.get("ml_token_expires_at") and tokens["ml_token_expires_at"] > datetime.now(timezone.utc).timestamp():
-        ml_authorized = True
-        
-    return render_template("index.html", produtos=produtos, ml_authorized=ml_authorized)
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -427,13 +362,16 @@ def login():
             session["usuario_nome"] = usuario["nome"]
             session["is_admin"] = bool(usuario["admin"])
             flash("Login realizado com sucesso!", "success")
-            return redirect(url_for("index"))
+            if session["is_admin"]:
+                return redirect(url_for("admin_dashboard"))
+            else:
+                return redirect(url_for("index"))
         else:
             flash("Nome de usuário ou senha inválidos.", "danger")
     return render_template("login.html")
 
-@app.route("/registro", methods=["GET", "POST"])
-def registro():
+@app.route("/register", methods=["GET", "POST"])
+def register():
     if request.method == "POST":
         nome = request.form["nome"]
         senha = request.form["senha"]
@@ -442,16 +380,27 @@ def registro():
             return redirect(url_for("login"))
         else:
             flash("Nome de usuário já existe ou ocorreu um erro.", "danger")
-    return render_template("registro.html")
+    return render_template("register.html")
 
 @app.route("/logout")
 def logout():
     session.clear()
-    flash("Você saiu do sistema.", "info")
+    flash("Você saiu da sua conta.", "info")
     return redirect(url_for("login"))
 
+@app.route("/")
+def index():
+    if "usuario_id" not in session:
+        return redirect(url_for("login"))
+    
+    usuario_id = session["usuario_id"]
+    produtos = carregar_produtos_usuario(usuario_id, apenas_nao_enviados=True)
+    responsaveis = obter_responsaveis()
+    
+    return render_template("index.html", produtos=produtos, responsaveis=responsaveis)
+
 @app.route("/admin")
-def admin():
+def admin_dashboard():
     if "usuario_id" not in session or not session.get("is_admin"):
         flash("Acesso não autorizado.", "danger")
         return redirect(url_for("login"))
@@ -462,314 +411,71 @@ def admin():
     else:
         listas_enviadas = carregar_todas_listas_enviadas()
         
-    return render_template("admin.html", listas=listas_enviadas, termo_pesquisa=termo_pesquisa)
-
-# --- Rotas da API ---
-@app.route("/api/produtos", methods=["GET"])
-def get_produtos():
-    if "usuario_id" not in session:
-        return jsonify({"error": "Não autorizado"}), 401
-    usuario_id = session["usuario_id"]
-    produtos = carregar_produtos_usuario(usuario_id, apenas_nao_enviados=True)
-    return jsonify(produtos)
-
-@app.route("/api/produtos", methods=["POST"])
-def add_produto():
-    if "usuario_id" not in session:
-        return jsonify({"error": "Não autorizado"}), 401
-    usuario_id = session["usuario_id"]
-    data = request.get_json()
-    
-    if not data or not data.get("ean") or not data.get("nome") or not data.get("quantidade"):
-        return jsonify({"error": "Dados incompletos (EAN, Nome, Quantidade são obrigatórios)"}), 400
+    # Agrupar por usuário e data de envio para exibição
+    listas_agrupadas = {}
+    for produto in listas_enviadas:
+        chave = (produto["usuario_id"], produto["data_envio"])
+        if chave not in listas_agrupadas:
+            listas_agrupadas[chave] = {
+                "usuario_nome": produto["nome_usuario"],
+                "data_envio": produto["data_envio"],
+                "responsavel_nome": produto["nome_responsavel"],
+                "produtos": []
+            }
+        listas_agrupadas[chave]["produtos"].append(produto)
         
-    produto = {
-        "ean": data["ean"],
-        "nome": data["nome"],
-        "cor": data.get("cor"),
-        "voltagem": data.get("voltagem"),
-        "modelo": data.get("modelo"),
-        "quantidade": int(data["quantidade"]),
-        "preco_medio": data.get("preco_medio") # Adicionado
-    }
-    
-    if salvar_produto(produto, usuario_id):
-        return jsonify({"message": "Produto adicionado/atualizado com sucesso!"}), 201
-    else:
-        return jsonify({"error": "Erro ao salvar produto no banco de dados"}), 500
+    return render_template("admin.html", listas_agrupadas=listas_agrupadas.values(), termo_pesquisa=termo_pesquisa)
 
-@app.route("/api/produtos/<int:produto_id>", methods=["DELETE"])
-def delete_produto(produto_id):
+@app.route("/buscar_ean", methods=["POST"])
+def buscar_ean():
     if "usuario_id" not in session:
-        return jsonify({"error": "Não autorizado"}), 401
-    usuario_id = session["usuario_id"]
-    
-    if excluir_produto(produto_id, usuario_id):
-        # Retorna a lista atualizada após a exclusão
-        produtos_atualizados = carregar_produtos_usuario(usuario_id, apenas_nao_enviados=True)
-        return jsonify(produtos_atualizados), 200
-    else:
-        return jsonify({"error": "Erro ao excluir produto ou produto não encontrado/não pertence ao usuário"}), 404
-
-@app.route("/api/buscar-produto", methods=["GET"])
-def buscar_produto_api():
-    if "usuario_id" not in session:
-        return jsonify({"error": "Não autorizado"}), 401
-    usuario_id = session["usuario_id"]
-    ean = request.args.get("ean")
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
+        
+    ean = request.json.get("ean")
     if not ean:
-        return jsonify({"error": "EAN não fornecido"}), 400
+        return jsonify({"success": False, "message": "Código EAN não fornecido."}), 400
 
-    # 1. Verificar se o produto já existe na lista local do usuário (não enviado)
-    produto_local = buscar_produto_local(ean, usuario_id)
+    # 1. Tenta buscar localmente primeiro (produtos não enviados do usuário)
+    produto_local = buscar_produto_local(ean, session["usuario_id"])
     if produto_local:
-        produto_local["preco_medio"] = produto_local.get("preco_medio") # Garantir que o campo existe
+        print(f"Produto {ean} encontrado localmente para usuário {session["usuario_id"]}")
         return jsonify({
-            "message": f"Produto com EAN {ean} já existe na sua lista local.",
+            "success": True,
             "data": produto_local,
+            "message": "Produto encontrado localmente.",
             "source": "local"
-        }), 200
+        })
 
-    # 2. Se não existe localmente, buscar online (Mercado Livre)
-    resultado_online = buscar_produto_online(ean, usuario_id) # Passa usuario_id para obter tokens
-    
-    if resultado_online and resultado_online.get("nome"): # Verifica se encontrou nome
-        return jsonify({
-            "message": "Produto encontrado online.",
-            "data": resultado_online,
-            "source": "online"
-        }), 200
-    else:
-        # Mesmo se não encontrar online, permite adicionar manualmente
-        return jsonify({
-            "message": "Produto não encontrado online. Preencha os dados manualmente.",
-            "data": {"ean": ean, "nome": "", "cor": "", "voltagem": "", "modelo": "", "quantidade": 1, "preco_medio": None},
-            "source": "manual"
-        }), 200 # Retorna 200 para permitir preenchimento
+    # 2. Se não encontrou localmente, busca online
+    print(f"Produto {ean} não encontrado localmente. Buscando online...")
+    resultado_online = buscar_produto_online(ean)
+    return jsonify(resultado_online)
 
-@app.route("/api/responsaveis", methods=["GET"])
-def get_responsaveis():
+@app.route("/adicionar_produto", methods=["POST"])
+def adicionar_produto():
     if "usuario_id" not in session:
-        return jsonify({"error": "Não autorizado"}), 401
-    responsaveis = obter_responsaveis()
-    return jsonify(responsaveis)
+        return jsonify({"success": False, "message": "Usuário não logado."}), 401
 
-@app.route("/api/enviar-lista", methods=["POST"])
-def enviar_lista_api():
-    if "usuario_id" not in session:
-        return jsonify({"error": "Não autorizado"}), 401
-    usuario_id = session["usuario_id"]
-    data = request.get_json()
-    
-    if not data or not data.get("responsavel_id") or not data.get("pin"):
-        return jsonify({"error": "Responsável e PIN são obrigatórios"}), 400
-        
-    responsavel_id = data["responsavel_id"]
-    pin = data["pin"]
-    
-    data_envio = enviar_lista_produtos(usuario_id, responsavel_id, pin)
-    
-    if data_envio is None and not verificar_pin_responsavel(responsavel_id, pin): # Verifica se falhou por PIN inválido
-         return jsonify({"error": "PIN inválido para o responsável selecionado."}), 403
-    elif data_envio:
-        return jsonify({"message": f"Lista enviada com sucesso em {formatar_data_brasileira(data_envio)}."}), 200
-    else:
-        return jsonify({"error": "Erro ao enviar a lista ou lista vazia."}), 500
+    dados = request.json
+    ean = dados.get("ean")
+    nome = dados.get("nome")
+    quantidade_str = dados.get("quantidade", "1")
+    preco_medio_str = dados.get("preco_medio")
 
-@app.route("/api/validar-lista", methods=["POST"])
-def validar_lista_api():
-    if "usuario_id" not in session or not session.get("is_admin"):
-        return jsonify({"error": "Não autorizado"}), 401
-    validador_id = session["usuario_id"]
-    data = request.get_json()
-    
-    if not data or not data.get("data_envio") or not data.get("nome_usuario"):
-        return jsonify({"error": "Dados incompletos para validação"}), 400
-        
-    data_envio_str = data["data_envio"]
-    nome_usuario = data["nome_usuario"]
-    
-    if validar_lista(data_envio_str, nome_usuario, validador_id):
-        return jsonify({"message": "Lista validada com sucesso!"}), 200
-    else:
-        return jsonify({"error": "Erro ao validar a lista."}), 500
+    if not ean or not nome:
+        return jsonify({"success": False, "message": "EAN e Nome são obrigatórios."}), 400
 
-@app.route("/api/exportar-lista", methods=["POST"])
-def exportar_lista_api():
-    if "usuario_id" not in session or not session.get("is_admin"):
-        return jsonify({"error": "Não autorizado"}), 401
-    data = request.get_json()
-    
-    if not data or not data.get("data_envio") or not data.get("nome_usuario"):
-        return jsonify({"error": "Dados incompletos para exportação"}), 400
-        
-    data_envio_str = data["data_envio"]
-    nome_usuario = data["nome_usuario"]
-    
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT id FROM usuarios WHERE nome = ?", (nome_usuario,))
-            usuario = cursor.fetchone()
-            if not usuario:
-                return jsonify({"error": "Usuário não encontrado"}), 404
-            usuario_id = usuario["id"]
-            
-            cursor.execute("""
-            SELECT p.ean, p.nome, p.cor, p.voltagem, p.modelo, p.quantidade, p.preco_medio, 
-                   u_validador.nome as nome_validador, p.data_validacao, 
-                   r.nome as nome_responsavel, p.responsavel_pin
-            FROM produtos p 
-            LEFT JOIN usuarios u_validador ON p.validador_id = u_validador.id
-            LEFT JOIN responsaveis r ON p.responsavel_id = r.id
-            WHERE p.usuario_id = ? AND p.data_envio = ? AND p.enviado = 1
-            """, (usuario_id, data_envio_str))
-            
-            produtos_lista = [dict(row) for row in cursor.fetchall()]
-            
-        if not produtos_lista:
-            return jsonify({"error": "Nenhum produto encontrado para esta lista/data de envio"}), 404
-
-        df = pd.DataFrame(produtos_lista)
-        # Renomear colunas para melhor clareza no Excel
-        df.rename(columns={
-            "ean": "EAN", "nome": "Nome do Produto", "cor": "Cor", "voltagem": "Voltagem",
-            "modelo": "Modelo", "quantidade": "Quantidade", "preco_medio": "Preço Médio (ML)",
-            "nome_validador": "Validado Por", "data_validacao": "Data Validação",
-            "nome_responsavel": "Responsável Envio", "responsavel_pin": "PIN Envio"
-        }, inplace=True)
+        quantidade = int(quantidade_str)
+        if quantidade <= 0:
+            raise ValueError("Quantidade deve ser positiva.")
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "message": "Quantidade inválida."}), 400
         
-        # Formatar data de validação
-        if "Data Validação" in df.columns:
-             df["Data Validação"] = df["Data Validação"].apply(lambda x: formatar_data_brasileira(x) if pd.notna(x) else "Não Validado")
-        
-        # Formatar preço médio
-        if "Preço Médio (ML)" in df.columns:
-            df["Preço Médio (ML)"] = df["Preço Médio (ML)"].apply(lambda x: f"R$ {x:.2f}".replace(".", ",") if pd.notna(x) else "N/A")
-
-        # Preparar nome do arquivo
-        data_envio_obj = datetime.fromisoformat(data_envio_str.replace("Z", "+00:00"))
-        data_formatada = data_envio_obj.strftime("%Y%m%d_%H%M%S")
-        nome_usuario_limpo = re.sub(r"\W+", "", nome_usuario) # Remover caracteres não alfanuméricos
-        filename = f"lista_{nome_usuario_limpo}_{data_formatada}.xlsx"
-
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False, sheet_name="Produtos")
-        output.seek(0)
-        
-        return send_file(output, 
-                         download_name=filename, 
-                         as_attachment=True, 
-                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-    except sqlite3.Error as e:
-        print(f"Erro de banco de dados ao exportar lista: {e}")
-        return jsonify({"error": "Erro interno do servidor ao exportar a lista (DB)"}), 500
-    except Exception as e:
-        print(f"Erro inesperado ao exportar lista: {e}")
-        return jsonify({"error": "Erro interno do servidor ao exportar a lista"}), 500
-
-# --- Rotas de Autorização Mercado Livre --- 
-
-@app.route("/authorize_ml")
-def authorize_ml():
-    if "usuario_id" not in session:
-        flash("Faça login para autorizar com o Mercado Livre.", "warning")
-        return redirect(url_for("login"))
-
-    # Gerar PKCE
-    code_verifier = secrets.token_urlsafe(64)
-    session["ml_code_verifier"] = code_verifier # Salvar na sessão
-    
-    hashed = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    code_challenge = base64.urlsafe_b64encode(hashed).decode("utf-8").replace("=", "")
-    code_challenge_method = "S256"
-
-    # Montar URL de autorização
-    params = {
-        "response_type": "code",
-        "client_id": ML_CLIENT_ID,
-        "redirect_uri": ML_REDIRECT_URI,
-        "code_challenge": code_challenge,
-        "code_challenge_method": code_challenge_method
-    }
-    auth_url_with_params = f"{ML_AUTH_URL}?{requests.compat.urlencode(params)}"
-    
-    print(f"Redirecionando para: {auth_url_with_params}") # Log para debug
-    return redirect(auth_url_with_params)
-
-@app.route("/ml_callback")
-def ml_callback():
-    if "usuario_id" not in session:
-        flash("Sessão inválida ou expirada.", "danger")
-        return redirect(url_for("login"))
-
-    usuario_id = session["usuario_id"]
-    code = request.args.get("code")
-    error = request.args.get("error")
-    code_verifier = session.pop("ml_code_verifier", None) # Recuperar e remover da sessão
-
-    if error:
-        flash(f"Erro na autorização do Mercado Livre: {error}", "danger")
-        return redirect(url_for("index"))
-
-    if not code:
-        flash("Código de autorização do Mercado Livre não recebido.", "danger")
-        return redirect(url_for("index"))
-        
-    if not code_verifier:
-        flash("Erro interno: Verificador PKCE não encontrado na sessão.", "danger")
-        return redirect(url_for("index"))
-
-    # Trocar código por token
-    token_payload = {
-        "grant_type": "authorization_code",
-        "client_id": ML_CLIENT_ID,
-        "client_secret": ML_CLIENT_SECRET,
-        "code": code,
-        "redirect_uri": ML_REDIRECT_URI,
-        "code_verifier": code_verifier
-    }
-    
-    headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
-    
-    try:
-        print("Enviando requisição para obter token...") # Log
-        response = requests.post(ML_TOKEN_URL, data=token_payload, headers=headers)
-        response.raise_for_status() # Lança exceção para erros HTTP (4xx ou 5xx)
-        
-        token_data = response.json()
-        print("Token recebido:", token_data) # Log
-        
-        access_token = token_data.get("access_token")
-        refresh_token = token_data.get("refresh_token")
-        expires_in = token_data.get("expires_in")
-        
-        if not access_token or not refresh_token or expires_in is None:
-             flash("Resposta inválida da API de tokens do Mercado Livre.", "danger")
-             print("Erro: Dados de token ausentes na resposta.")
-             return redirect(url_for("index"))
-
-        # Salvar tokens no banco de dados
-        if salvar_tokens_ml(usuario_id, access_token, refresh_token, expires_in):
-            flash("Autorização com Mercado Livre concluída com sucesso!", "success")
-        else:
-            flash("Erro ao salvar informações de autorização no banco de dados.", "danger")
-            
-    except requests.exceptions.RequestException as e:
-        flash(f"Erro ao comunicar com a API do Mercado Livre: {e}", "danger")
-        print(f"Erro na requisição de token: {e}")
-        if e.response is not None:
-             print(f"Resposta da API: {e.response.status_code} - {e.response.text}")
-    except Exception as e:
-        flash(f"Ocorreu um erro inesperado durante a autorização: {e}", "danger")
-        print(f"Erro inesperado no callback: {e}")
-
-    return redirect(url_for("index"))
-
-
-if __name__ == "__main__":
-    # Não execute init_database() aqui se estiver usando Gunicorn/Waitress,
-    # pois pode ser chamado múltiplas vezes. A chamada no início do script garante execução única.
-    app.run(debug=True, host="0.0.0.0", port=5001) # Porta diferente para debug local
+    preco_medio = None
+    if preco_medio_str:
+        try:
+            preco_medio = float(preco_medio_str)
+        except (ValueError, TypeError):
+            print(f"Aviso: Preço médio 
+(Content truncated due to size limit. Use line ranges to read in chunks)

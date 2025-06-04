@@ -882,4 +882,4 @@ if __name__ == "__main__":
     # Para desenvolvimento local
     # Remover debug=True para produção
     # host=\'0.0.0.0\' permite acesso de outras máquinas na rede
-    app.run(debug=True, host=\'0.0.0.0\', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)

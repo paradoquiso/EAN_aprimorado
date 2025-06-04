@@ -77,6 +77,19 @@ def init_database():
             );
             """)
             
+            # Verificar e adicionar colunas ausentes na tabela produtos (migração)
+            cursor.execute("PRAGMA table_info(produtos)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if "responsavel_id" not in columns:
+                print("Adicionando coluna \'responsavel_id\' à tabela produtos...")
+                cursor.execute("ALTER TABLE produtos ADD COLUMN responsavel_id INTEGER REFERENCES responsaveis(id)")
+            if "responsavel_pin" not in columns:
+                print("Adicionando coluna \'responsavel_pin\' à tabela produtos...")
+                cursor.execute("ALTER TABLE produtos ADD COLUMN responsavel_pin TEXT")
+            if "preco_medio" not in columns:
+                print("Adicionando coluna \'preco_medio\' à tabela produtos...")
+                cursor.execute("ALTER TABLE produtos ADD COLUMN preco_medio REAL")
+
             # Verificar e inserir usuário admin padrão se não existir
             cursor.execute("SELECT COUNT(*) FROM usuarios WHERE nome = ?", ("admin",))
             admin_exists = cursor.fetchone()[0]

@@ -851,8 +851,7 @@ def exportar_excel():
         filename = f"Lista_{nome_usuario}_{safe_data_envio}.xlsx"
 
         return send_file(output, 
-                         mimetype=\'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\',
-                         as_attachment=True, 
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",                        as_attachment=True, 
                          download_name=filename)
 
     except sqlite3.Error as e:

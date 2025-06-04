@@ -338,4 +338,4 @@ if __name__ == '__main__':
     
     print(f"Testando busca para EAN: {test_ean}")
     resultado = buscar_produto_por_ean(test_ean)
-    print(json.dumps(resultado, indent=2, ensure_ascii=False)
+    print(json.dumps(resultado, indent=2, ensure_ascii=False))

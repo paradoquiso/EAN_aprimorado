@@ -12,7 +12,7 @@ import json
 from werkzeug.security import generate_password_hash, check_password_hash
 from src.utils import formatar_data_brasileira
 # Importar as funções do novo módulo de autenticação ML
-from src.mercado_livre_auth_code import (
+from src.mercado_livre import (
     get_authorization_url,
     exchange_code_for_token,
     refresh_access_token,

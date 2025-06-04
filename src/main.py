@@ -840,8 +840,7 @@ def exportar_excel():
         }, inplace=True)
 
         # Criar arquivo Excel em memória
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine=\'openpyxl\') as writer:
+        output = io.BytesIO(        with pd.ExcelWriter(output, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name=\'Produtos\')
         output.seek(0)
 
@@ -884,4 +883,3 @@ if __name__ == "__main__":
     # Remover debug=True para produção
     # host=\'0.0.0.0\' permite acesso de outras máquinas na rede
     app.run(debug=True, host=\'0.0.0.0\', port=5000)
-

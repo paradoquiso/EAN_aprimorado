@@ -53,7 +53,7 @@
                     </li>
                     <!-- Removido status e botão de autorização ML -->
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for(\'logout\') }}">Sair</a>
+                        <a class="nav-link" href="{{ url_for('logout') }}">Sair</a>
                     </li>
                 </ul>
             </div>
@@ -65,7 +65,7 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
-                    <div class="alert alert-{{ category or \'info\' }} alert-dismissible fade show" role="alert">
+                    <div class="alert alert-{{ category or 'info' }} alert-dismissible fade show" role="alert">
                         {{ message }}
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
@@ -162,9 +162,9 @@
                                     <tr data-id="{{ produto.id }}">
                                         <td>{{ produto.ean }}</td>
                                         <td>{{ produto.nome }}</td>
-                                        <td>{{ produto.cor or \'\' }}</td>
-                                        <td>{{ produto.voltagem or \'\' }}</td>
-                                        <td>{{ produto.modelo or \'\' }}</td>
+                                        <td>{{ produto.cor or '' }}</td>
+                                        <td>{{ produto.voltagem or '' }}</td>
+                                        <td>{{ produto.modelo or '' }}</td>
                                         <td>{{ "R$ %.2f"|format(produto.preco_medio) if produto.preco_medio else "N/A" }}</td>
                                         <td>{{ produto.quantidade }}</td>
                                         <td>
@@ -223,36 +223,36 @@
             if (value === null || value === undefined || isNaN(value)) {
                 return "N/A";
             }
-            return `R$ ${parseFloat(value).toFixed(2).replace(\'\.\', \',\')}`;
+            return `R$ ${parseFloat(value).toFixed(2).replace('.', ',')}`;
         }
         
-        function showNotification(message, type = \'success\') {
-            const notification = document.getElementById(\'notification\');
-            const notificationMessage = document.getElementById(\'notification-message\');
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const notificationMessage = document.getElementById('notification-message');
             notification.className = `alert alert-${type} alert-dismissible fade show`;
             notificationMessage.textContent = message;
-            notification.style.display = \'block\';
+            notification.style.display = 'block';
             setTimeout(hideNotification, 5000);
         }
 
         function hideNotification() {
-            const notification = document.getElementById(\'notification\');
-            notification.style.display = \'none\';
+            const notification = document.getElementById('notification');
+            notification.style.display = 'none';
         }
         
         function updateProductList(produtos) {
-            const productListBody = document.getElementById(\'productList\');
-            productListBody.innerHTML = \'\';
+            const productListBody = document.getElementById('productList');
+            productListBody.innerHTML = '';
             if (produtos && produtos.length > 0) {
                 produtos.forEach(produto => {
-                    const row = document.createElement(\'tr\');
-                    row.setAttribute(\'data-id\', produto.id);
+                    const row = document.createElement('tr');
+                    row.setAttribute('data-id', produto.id);
                     row.innerHTML = `
                         <td>${produto.ean}</td>
                         <td>${produto.nome}</td>
-                        <td>${produto.cor || \'\'}</td>
-                        <td>${produto.voltagem || \'\'}</td>
-                        <td>${produto.modelo || \'\'}</td>
+                        <td>${produto.cor || ''}</td>
+                        <td>${produto.voltagem || ''}</td>
+                        <td>${produto.modelo || ''}</td>
                         <td>${formatCurrency(produto.preco_medio)}</td>
                         <td>${produto.quantidade}</td>
                         <td>
@@ -262,144 +262,147 @@
                     productListBody.appendChild(row);
                 });
             } else {
-                productListBody.innerHTML = \'<tr id="empty-row"><td colspan="8" class="text-center">Nenhum produto cadastrado</td></tr>\';
+                productListBody.innerHTML = '<tr id="empty-row"><td colspan="8" class="text-center">Nenhum produto cadastrado</td></tr>';
             }
             addDeleteEventListeners();
         }
         
         function addDeleteEventListeners() {
-            document.querySelectorAll(\'.delete-btn\').forEach(button => {
-                button.removeEventListener(\'click\', handleDeleteClick);
-                button.addEventListener(\'click\', handleDeleteClick);
+            document.querySelectorAll('.delete-btn').forEach(button => {
+                button.removeEventListener('click', handleDeleteClick);
+                button.addEventListener('click', handleDeleteClick);
             });
         }
         
         function handleDeleteClick(event) {
-            const produtoId = event.target.getAttribute(\'data-id\');
-            if (confirm(\'Tem certeza que deseja excluir este produto?\')) {
-                fetch(`/api/produtos/${produtoId}`, { method: \'DELETE\' })
+            const produtoId = event.target.getAttribute('data-id');
+            if (confirm('Tem certeza que deseja excluir este produto?')) {
+                fetch(`/api/produtos/${produtoId}`, { method: 'DELETE' })
                 .then(response => {
                     if (!response.ok) {
                         return response.json().then(err => { throw new Error(err.error || `Erro ${response.status}`) });
                     }
                     // Precisa buscar a lista atualizada após excluir
-                    return fetch(\'/api/produtos\'); 
+                    return fetch('/api/produtos'); 
                 })
                 .then(response => response.json()) // Converte a resposta da busca em JSON
                 .then(updatedProdutos => {
-                    showNotification(\'Produto excluído com sucesso!\', \'success\');
+                    showNotification('Produto excluído com sucesso!', 'success');
                     updateProductList(updatedProdutos); // Atualiza a lista
                 })
                 .catch(error => {
-                    console.error(\'Erro ao excluir produto:\', error);
-                    showNotification(`Erro ao excluir produto: ${error.message}`, \'danger\');
+                    console.error('Erro ao excluir produto:', error);
+                    showNotification(`Erro ao excluir produto: ${error.message}`, 'danger');
                 });
             }
         }
 
-        document.addEventListener(\'DOMContentLoaded\', function() {
-            const productForm = document.getElementById(\'productForm\');
-            const searchBtn = document.getElementById(\'searchBtn\');
-            const eanInput = document.getElementById(\'ean\');
-            const nomeInput = document.getElementById(\'nome\');
-            const corInput = document.getElementById(\'cor\');
-            const voltagemInput = document.getElementById(\'voltagem\');
-            const modeloInput = document.getElementById(\'modelo\');
-            const quantidadeInput = document.getElementById(\'quantidade\');
-            const precoMedioDisplay = document.getElementById(\'preco_medio_display\');
-            const precoMedioHidden = document.getElementById(\'preco_medio_hidden\');
-            const enviarListaBtn = document.getElementById(\'enviarListaBtn\');
-            const confirmEnvioModal = new bootstrap.Modal(document.getElementById(\'confirmEnvioModal\'));
-            const confirmEnvioForm = document.getElementById(\'confirmEnvioForm\');
-            const responsavelSelect = document.getElementById(\'responsavel\');
-            const pinInput = document.getElementById(\'pin\');
-            const confirmarEnvioBtn = document.getElementById(\'confirmarEnvioBtn\');
-
-            // Carregar responsáveis no modal
-            fetch(\'/api/responsaveis\')
+        document.addEventListener('DOMContentLoaded', function() {
+            const productForm = document.getElementById('productForm');
+            const searchBtn = document.getElementById('searchBtn');
+            const eanInput = document.getElementById('ean');
+            const nomeInput = document.getElementById('nome');
+            const corInput = document.getElementById('cor');
+            const voltagemInput = document.getElementById('voltagem');
+            const modeloInput = document.getElementById('modelo');
+            const quantidadeInput = document.getElementById('quantidade');
+            const precoMedioDisplay = document.getElementById('preco_medio_display');
+            const precoMedioHidden = document.getElementById('preco_medio_hidden');
+            const enviarListaBtn = document.getElementById('enviarListaBtn');
+            const confirmEnvioModal = new bootstrap.Modal(document.getElementById('confirmEnvioModal'));
+            const confirmEnvioForm = document.getElementById('confirmEnvioForm');
+            const responsavelSelect = document.getElementById('responsavel');
+            const pinInput = document.getElementById('pin');
+            const confirmarEnvioBtn = document.getElementById('confirmarEnvioBtn');
+            
+            // Carregar responsáveis para o select
+            fetch('/api/responsaveis')
                 .then(response => response.json())
-                .then(data => {
-                    data.forEach(resp => {
-                        const option = document.createElement(\'option\');
+                .then(responsaveis => {
+                    responsavelSelect.innerHTML = '<option value="">Selecione o responsável</option>';
+                    responsaveis.forEach(resp => {
+                        const option = document.createElement('option');
                         option.value = resp.id;
                         option.textContent = resp.nome;
                         responsavelSelect.appendChild(option);
                     });
                 })
-                .catch(error => console.error(\'Erro ao carregar responsáveis:\', error));
-
-            searchBtn.addEventListener(\'click\', function() {
+                .catch(error => {
+                    console.error('Erro ao carregar responsáveis:', error);
+                    showNotification('Erro ao carregar lista de responsáveis', 'danger');
+                });
+            
+            // Buscar produto por EAN
+            searchBtn.addEventListener('click', function() {
                 const ean = eanInput.value.trim();
                 if (!ean) {
-                    showNotification(\'Por favor, insira um código EAN.\', \'warning\');
+                    showNotification('Por favor, digite um código EAN válido', 'warning');
                     return;
                 }
+                
                 searchBtn.disabled = true;
-                searchBtn.textContent = \'Buscando...\';
-
-                fetch(\'/buscar_ean\', {
-                    method: \'POST\',
-                    headers: { \'Content-Type\': \'application/json\' },
+                searchBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Buscando...';
+                
+                fetch('/api/buscar_ean', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
                     body: JSON.stringify({ ean: ean })
                 })
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(err => { throw new Error(err.message || `Erro ${response.status}`) });
-                    }
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
+                    searchBtn.disabled = false;
+                    searchBtn.textContent = 'Buscar';
+                    
                     if (data.success) {
-                        nomeInput.value = data.data.nome || \'\';
-                        corInput.value = data.data.cor || \'\';
-                        voltagemInput.value = data.data.voltagem || \'\';
-                        modeloInput.value = data.data.modelo || \'\';
-                        precoMedioDisplay.value = formatCurrency(data.data.preco_medio);
-                        precoMedioHidden.value = data.data.preco_medio !== null ? data.data.preco_medio : \'\';
-                        showNotification(data.message, data.source === \'local\' ? \'info\' : \'success\');
+                        nomeInput.value = data.data.nome || '';
+                        corInput.value = data.data.cor || '';
+                        voltagemInput.value = data.data.voltagem || '';
+                        modeloInput.value = data.data.modelo || '';
+                        
+                        // Atualizar preço médio
+                        const precoMedio = data.data.preco_medio;
+                        precoMedioHidden.value = precoMedio || '';
+                        precoMedioDisplay.value = precoMedio ? formatCurrency(precoMedio) : 'N/A';
+                        
+                        showNotification(`Produto encontrado: ${data.data.nome}`, 'success');
                     } else {
-                        showNotification(data.message, \'warning\');
-                        // Limpar campos se a busca falhar, exceto EAN
-                        nomeInput.value = \'\';
-                        corInput.value = \'\';
-                        voltagemInput.value = \'\';
-                        modeloInput.value = \'\';
-                        precoMedioDisplay.value = \'N/A\';
-                        precoMedioHidden.value = \'\';
+                        showNotification(data.message || 'Produto não encontrado', 'warning');
                     }
                 })
                 .catch(error => {
-                    console.error(\'Erro ao buscar EAN:\', error);
-                    showNotification(`Erro ao buscar EAN: ${error.message}`, \'danger\');
-                    // Limpar campos em caso de erro
-                    nomeInput.value = \'\';
-                    corInput.value = \'\';
-                    voltagemInput.value = \'\';
-                    modeloInput.value = \'\';
-                    precoMedioDisplay.value = \'N/A\';
-                    precoMedioHidden.value = \'\';
-                })
-                .finally(() => {
                     searchBtn.disabled = false;
-                    searchBtn.textContent = \'Buscar\';
+                    searchBtn.textContent = 'Buscar';
+                    console.error('Erro na busca:', error);
+                    showNotification('Erro ao buscar produto', 'danger');
                 });
             });
-
-            productForm.addEventListener(\'submit\', function(event) {
-                event.preventDefault();
+            
+            // Adicionar produto
+            productForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
                 const produto = {
                     ean: eanInput.value.trim(),
                     nome: nomeInput.value.trim(),
                     cor: corInput.value.trim(),
                     voltagem: voltagemInput.value.trim(),
                     modelo: modeloInput.value.trim(),
-                    quantidade: parseInt(quantidadeInput.value, 10),
-                    preco_medio: precoMedioHidden.value ? parseFloat(precoMedioHidden.value) : null
+                    quantidade: quantidadeInput.value,
+                    preco_medio: precoMedioHidden.value || null
                 };
-
-                fetch(\'/adicionar_produto\', {
-                    method: \'POST\',
-                    headers: { \'Content-Type\': \'application/json\' },
+                
+                if (!produto.ean || !produto.nome || !produto.quantidade) {
+                    showNotification('Preencha os campos obrigatórios (EAN, Nome e Quantidade)', 'warning');
+                    return;
+                }
+                
+                fetch('/api/produtos', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
                     body: JSON.stringify(produto)
                 })
                 .then(response => {
@@ -410,76 +413,88 @@
                 })
                 .then(data => {
                     if (data.success) {
-                        showNotification(\'Produto adicionado/atualizado com sucesso!\', \'success\');
-                        updateProductList(data.produtos);
-                        // Limpar formulário após adicionar
+                        // Limpar formulário
                         productForm.reset();
-                        precoMedioDisplay.value = \'\'; // Limpa display de preço
-                        precoMedioHidden.value = \'\';
+                        precoMedioDisplay.value = '';
+                        precoMedioHidden.value = '';
+                        
+                        // Atualizar lista de produtos
+                        updateProductList(data.produtos);
+                        
+                        showNotification('Produto adicionado com sucesso!', 'success');
                     } else {
-                        showNotification(data.message, \'danger\');
+                        showNotification(data.message || 'Erro ao adicionar produto', 'danger');
                     }
                 })
                 .catch(error => {
-                    console.error(\'Erro ao adicionar produto:\', error);
-                    showNotification(`Erro ao adicionar produto: ${error.message}`, \'danger\');
+                    console.error('Erro ao adicionar produto:', error);
+                    showNotification(`Erro ao adicionar produto: ${error.message}`, 'danger');
                 });
             });
-
-            enviarListaBtn.addEventListener(\'click\', function() {
-                const productRows = document.querySelectorAll(\'#productList tr:not(#empty-row)\');
-                if (productRows.length === 0) {
-                    showNotification(\'Não há produtos na lista para enviar.\', \'warning\');
+            
+            // Enviar lista
+            enviarListaBtn.addEventListener('click', function() {
+                // Verificar se há produtos para enviar
+                const emptyRow = document.getElementById('empty-row');
+                if (emptyRow) {
+                    showNotification('Não há produtos para enviar', 'warning');
                     return;
                 }
-                // Limpar formulário do modal antes de abrir
+                
+                // Limpar formulário do modal
                 confirmEnvioForm.reset();
+                
+                // Mostrar modal
                 confirmEnvioModal.show();
             });
-
-            confirmarEnvioBtn.addEventListener(\'click\', function() {
+            
+            // Confirmar envio
+            confirmarEnvioBtn.addEventListener('click', function() {
                 const responsavelId = responsavelSelect.value;
                 const pin = pinInput.value;
-
-                if (!responsavelId || !pin || pin.length !== 4 || !/^[0-9]{4}$/.test(pin)) {
-                    showNotification(\'Selecione um responsável e digite um PIN válido de 4 dígitos.\', \'warning\');
+                
+                if (!responsavelId || !pin) {
+                    showNotification('Selecione o responsável e digite o PIN', 'warning');
                     return;
                 }
-
+                
                 confirmarEnvioBtn.disabled = true;
-                confirmarEnvioBtn.textContent = \'Enviando...\';
-
-                fetch(\'/enviar_lista\', {
-                    method: \'POST\',
-                    headers: { \'Content-Type\': \'application/json\' },
-                    body: JSON.stringify({ responsavel_id: responsavelId, pin: pin })
+                confirmarEnvioBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Enviando...';
+                
+                fetch('/api/enviar_lista', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        responsavel_id: responsavelId,
+                        pin: pin
+                    })
                 })
-                .then(response => {
-                    if (!response.ok) {
-                        return response.json().then(err => { throw new Error(err.message || `Erro ${response.status}`) });
-                    }
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
+                    confirmarEnvioBtn.disabled = false;
+                    confirmarEnvioBtn.textContent = 'Confirmar Envio';
+                    
                     if (data.success) {
-                        showNotification(\'Lista enviada com sucesso!\', \'success\');
-                        updateProductList([]); // Limpa a lista da interface
                         confirmEnvioModal.hide();
+                        showNotification('Lista enviada com sucesso!', 'success');
+                        
+                        // Atualizar lista (que agora deve estar vazia)
+                        updateProductList([]);
                     } else {
-                        showNotification(data.message, \'danger\');
+                        showNotification(data.message || 'Erro ao enviar lista', 'danger');
                     }
                 })
                 .catch(error => {
-                    console.error(\'Erro ao enviar lista:\', error);
-                    showNotification(`Erro ao enviar lista: ${error.message}`, \'danger\');
-                })
-                .finally(() => {
                     confirmarEnvioBtn.disabled = false;
-                    confirmarEnvioBtn.textContent = \'Confirmar Envio\';
+                    confirmarEnvioBtn.textContent = 'Confirmar Envio';
+                    console.error('Erro ao enviar lista:', error);
+                    showNotification(`Erro ao enviar lista: ${error.message}`, 'danger');
                 });
             });
-
-            // Adiciona listeners aos botões de exclusão existentes ao carregar a página
+            
+            // Inicializar listeners para botões de exclusão
             addDeleteEventListeners();
         });
     </script>
